@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template  # <--- Added render_template here
 from flask_cors import CORS
 from extensions import db, mail, login_manager, migrate
 from routes.auth import auth
@@ -70,10 +70,11 @@ app.register_blueprint(profile , url_prefix="/api")
 app.register_blueprint(admin , url_prefix="/admin")
 
 
-# ================= HOME =================
+# ================= HOME (FRONTEND CONNECTED) =================
 @app.route("/")
 def home():
-    return "Backend Running Successfully!"
+    # This now looks for templates/index.html instead of just showing text
+    return render_template("index.html")
 
 
 if __name__ == "__main__":
