@@ -11,7 +11,6 @@ auth = Blueprint("auth", __name__)
 
 # ======= PASSWORD VALIDATION =======
 def validate_password(password):
-    # Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
     pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$'
     return re.match(pattern, password)
 
@@ -31,11 +30,12 @@ def verify_token(token, expiration=3600):
 # ======= REGISTER =======
 @auth.route("/register", methods=["GET", "POST"])
 def register():
+    # If user visits the page (GET), show the register form
     if request.method == "GET":
         return render_template("register.html")
 
-    # Handle both JSON (React/API) and Form data (Standard HTML)
-    data = request.get_json() if request.is_json else request.form
+    # If user submits the form (POST), save the data
+    data = request.form if request.form else request.get_json()
     email = data.get("email")
     password = data.get("password")
     name = data.get("name", "")
@@ -52,16 +52,17 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
-    # After registration, send them to login
     return redirect(url_for('auth.login'))
 
 # ======= LOGIN =======
 @auth.route("/login", methods=["GET", "POST"])
 def login():
+    # If user visits the page (GET), show the login form
     if request.method == "GET":
         return render_template("login.html")
 
-    data = request.get_json() if request.is_json else request.form
+    # If user submits the form (POST), check credentials
+    data = request.form if request.form else request.get_json()
     email = data.get("email")
     password = data.get("password")
 
@@ -71,9 +72,7 @@ def login():
         return jsonify({"message": "Invalid credentials"}), 401
 
     login_user(user)
-    
-    # After login, go to the dashboard
-    # Note: Ensure your dashboard blueprint has a function named 'main_dashboard'
+    # Redirect to your dashboard route
     return redirect(url_for('dashboard.dashboard'))
 
 # ======= LOGOUT =======
@@ -86,17 +85,14 @@ def logout():
 # ======= FORGOT PASSWORD =======
 @auth.route("/reset-password-request", methods=["POST"])
 def reset_request():
-    data = request.get_json() if request.is_json else request.form
+    data = request.form if request.form else request.get_json()
     email = data.get("email")
 
     user = User.query.filter_by(email=email).first()
-
     if not user:
         return jsonify({"message": "Email not found"}), 404
 
     token = generate_token(email)
-    
-    # Use request.url_root to automatically get your Vercel URL
     reset_link = f"{request.url_root}reset-password/{token}"
 
     msg = Message(
@@ -104,7 +100,6 @@ def reset_request():
         sender=("Finance App", current_app.config["MAIL_USERNAME"]),
         recipients=[email]
     )
-
     msg.body = f"Click here to reset your password: {reset_link}"
     mail.send(msg)
 
@@ -114,12 +109,11 @@ def reset_request():
 @auth.route("/reset-password/<token>", methods=["POST"])
 def reset_password(token):
     email = verify_token(token)
-
     if not email:
         return jsonify({"message": "Invalid or expired token"}), 400
 
     user = User.query.filter_by(email=email).first()
-    data = request.get_json() if request.is_json else request.form
+    data = request.form if request.form else request.get_json()
     new_password = data.get("password")
 
     if not validate_password(new_password):
