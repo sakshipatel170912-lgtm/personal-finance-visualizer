@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, render_template, redirect, url_for
 from models import db, User
 from flask_mail import Message
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,6 +11,7 @@ auth = Blueprint("auth", __name__)
 
 # ======= PASSWORD VALIDATION =======
 def validate_password(password):
+    # Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
     pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$'
     return re.match(pattern, password)
 
@@ -28,9 +29,13 @@ def verify_token(token, expiration=3600):
         return None
 
 # ======= REGISTER =======
-@auth.route("/register", methods=["POST"])
+@auth.route("/register", methods=["GET", "POST"])
 def register():
-    data = request.get_json()
+    if request.method == "GET":
+        return render_template("register.html")
+
+    # Handle both JSON (React/API) and Form data (Standard HTML)
+    data = request.get_json() if request.is_json else request.form
     email = data.get("email")
     password = data.get("password")
     name = data.get("name", "")
@@ -47,12 +52,16 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({"message": "Registration successful"}), 201
+    # After registration, send them to login
+    return redirect(url_for('auth.login'))
 
 # ======= LOGIN =======
-@auth.route("/login", methods=["POST"])
+@auth.route("/login", methods=["GET", "POST"])
 def login():
-    data = request.get_json()
+    if request.method == "GET":
+        return render_template("login.html")
+
+    data = request.get_json() if request.is_json else request.form
     email = data.get("email")
     password = data.get("password")
 
@@ -62,19 +71,22 @@ def login():
         return jsonify({"message": "Invalid credentials"}), 401
 
     login_user(user)
-    return jsonify({"message": "Login successful"}), 200
+    
+    # After login, go to the dashboard
+    # Note: Ensure your dashboard blueprint has a function named 'main_dashboard'
+    return redirect(url_for('dashboard.dashboard'))
 
 # ======= LOGOUT =======
-@auth.route("/logout", methods=["POST"])
+@auth.route("/logout")
 @login_required
 def logout():
     logout_user()
-    return jsonify({"message": "Logged out successfully"}), 200
+    return redirect(url_for('auth.login'))
 
-# ======= FORGOT PASSWORD (SEND EMAIL) =======
+# ======= FORGOT PASSWORD =======
 @auth.route("/reset-password-request", methods=["POST"])
 def reset_request():
-    data = request.get_json()
+    data = request.get_json() if request.is_json else request.form
     email = data.get("email")
 
     user = User.query.filter_by(email=email).first()
@@ -83,8 +95,9 @@ def reset_request():
         return jsonify({"message": "Email not found"}), 404
 
     token = generate_token(email)
-
-    reset_link = f"http://localhost:3000/reset-password/{token}"
+    
+    # Use request.url_root to automatically get your Vercel URL
+    reset_link = f"{request.url_root}reset-password/{token}"
 
     msg = Message(
         subject="Password Reset",
@@ -92,18 +105,7 @@ def reset_request():
         recipients=[email]
     )
 
-    msg.body = f"""
-Hello,
-
-Click the link below to reset your password:
-
-{reset_link}
-
-This link will expire in 1 hour.
-
-- Finance App
-"""
-
+    msg.body = f"Click here to reset your password: {reset_link}"
     mail.send(msg)
 
     return jsonify({"message": "Reset link sent to your email"}), 200
@@ -111,18 +113,13 @@ This link will expire in 1 hour.
 # ======= RESET PASSWORD =======
 @auth.route("/reset-password/<token>", methods=["POST"])
 def reset_password(token):
-
     email = verify_token(token)
 
     if not email:
         return jsonify({"message": "Invalid or expired token"}), 400
 
     user = User.query.filter_by(email=email).first()
-
-    if not user:
-        return jsonify({"message": "User not found"}), 404
-
-    data = request.get_json()
+    data = request.get_json() if request.is_json else request.form
     new_password = data.get("password")
 
     if not validate_password(new_password):
